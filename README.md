@@ -1,1 +1,0 @@
-# bayar.github.io
