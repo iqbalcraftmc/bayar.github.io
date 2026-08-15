@@ -1,18 +1,20 @@
 <!DOCTYPE html>
-<html lang="id">
+<html lang="id" translate="no">
 <head>
     <meta charset="UTF-8">
+    <meta name="google" content="notranslate">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Tagihan QRIS</title>
     <style>
-        body { font-family: sans-serif; display: flex; justify-content: center; padding: 20px; background: #f0f2f5; margin: 0; }
-        .card { background: white; padding: 20px; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); width: 100%; max-width: 350px; text-align: center; }
-        img { width: 100%; max-width: 250px; border-radius: 10px; border: 1px solid #ddd; margin: 10px 0; }
-        .price { font-size: 22px; font-weight: bold; color: #d63384; margin: 5px 0; }
-        .status-badge { padding: 8px; border-radius: 6px; font-weight: bold; font-size: 14px; margin-bottom: 10px; background: #fff3cd; color: #856404; }
-        .badge-paid { background: #d4edda !important; color: #155724 !important; }
-        .info { font-size: 13px; color: #666; }
+        body { font-family: 'Segoe UI', Roboto, sans-serif; display: flex; justify-content: center; padding: 20px; background: #f0f2f5; margin: 0; }
+        .card { background: white; padding: 24px; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); width: 100%; max-width: 360px; text-align: center; }
+        img { width: 100%; max-width: 250px; border-radius: 12px; border: 1px solid #ddd; margin: 12px 0; }
+        .price { font-size: 24px; font-weight: bold; color: #d63384; margin: 8px 0; }
+        .status-badge { padding: 10px; border-radius: 8px; font-weight: bold; font-size: 14px; margin-bottom: 12px; background: #fff3cd; color: #856404; }
+        .badge-paid { background: #d4edda !important; color: #155724 !important; font-size: 16px !important; padding: 14px !important; }
+        .info { font-size: 13px; color: #666; line-height: 1.5; }
         #loading { font-size: 14px; color: #007bff; font-weight: bold; }
+        .success-icon { font-size: 48px; margin: 10px 0; display: none; }
     </style>
 </head>
 <body>
@@ -24,8 +26,11 @@
 
     <div id="paymentContent" style="display: none;">
         <div id="statusText" class="status-badge">🟡 Menunggu Pembayaran</div>
+        <div id="successIcon" class="success-icon">✅</div>
+        
         <img id="qrisDisplay" src="" alt="QRIS Code">
         <div class="price" id="totalDisplay">Rp 0</div>
+        
         <p class="info" id="instructions">Silakan <strong>Screenshot</strong> gambar di atas & scan via DANA, OVO, GoPay, ShopeePay, atau M-Banking.</p>
     </div>
 </div>
@@ -36,6 +41,8 @@
     const totalParam = urlParams.get('total');
     const apiKey = "SKY_be1b80ec1d164337";
 
+    let checkInterval = null;
+
     async function initPage() {
         if (!invParam) {
             document.getElementById('loading').innerText = "⚠️ Link Pembayaran Tidak Valid";
@@ -44,27 +51,28 @@
 
         document.getElementById('totalDisplay').innerText = "Rp " + Number(totalParam || 0).toLocaleString('id-ID');
 
-        // Ambil data QRIS langsung dari API SairiBot menggunakan ID Invoice
         try {
+            // Ambil QRIS langsung menggunakan Invoice ID
             const targetUrl = `https://api.sairibot.my.id/api/invoice/status?apikey=${apiKey}&invoice_id=${invParam}`;
             const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
             const res = await fetch(proxyUrl);
             const data = await res.json();
 
-            // Pasang gambar QRIS jika tersedia dari API
-            if (data.qris_image || data.data?.qris_image) {
-                document.getElementById('qrisDisplay').src = data.qris_image || data.data.qris_image;
-            } else if (window.opener && window.opener.currentQrisBase64) {
-                document.getElementById('qrisDisplay').src = window.opener.currentQrisBase64;
+            // Tampilkan gambar QRIS jika tersedia
+            const qrisImg = data.qris_image || data.data?.qris_image || data.image;
+            if (qrisImg) {
+                document.getElementById('qrisDisplay').src = qrisImg;
             }
 
             document.getElementById('loading').style.display = 'none';
             document.getElementById('paymentContent').style.display = 'block';
 
-            // Cek Status Pembayaran Real-Time setiap 4 detik
-            setInterval(checkStatus, 4000);
+            // Cek status pertama kali
+            checkStatus();
+            // Cek status otomatis setiap 3 detik
+            checkInterval = setInterval(checkStatus, 3000);
         } catch(e) {
-            document.getElementById('loading').innerText = "Gagal memuat detail transaksi.";
+            document.getElementById('loading').innerText = "Gagal memuat transaksi.";
         }
     }
 
@@ -74,14 +82,35 @@
             const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
             const res = await fetch(proxyUrl);
             const data = await res.json();
-            const status = (data.status || data.data?.status || "").toLowerCase();
 
-            if (status === 'paid' || status === 'success') {
+            // Pengecekan multi-format respon dari SairiBot
+            const rawStatus = data.status || data.data?.status || data.transaction_status || "";
+            const status = String(rawStatus).toLowerCase();
+
+            if (status === 'paid' || status === 'success' || status === 'berhasil' || status === 'settlement') {
+                // 1. Ubah Badge Status
                 const badge = document.getElementById('statusText');
                 badge.className = 'status-badge badge-paid';
-                badge.innerText = '🟢 PEMBAYARAN LUNAS!';
-                document.getElementById('instructions').innerText = 'Terima kasih, pembayaran telah diterima.';
+                badge.innerText = '🟢 PEMBAYARAN BERHASIL!';
+
+                // 2. Sembunyikan Gambar QRIS
                 document.getElementById('qrisDisplay').style.display = 'none';
+
+                // 3. Tampilkan Ikon Sukses & Ubah Pesan
+                document.getElementById('successIcon').style.display = 'block';
+                document.getElementById('instructions').innerHTML = 'Terima kasih, pembayaran telah diterima dan diverifikasi oleh sistem.';
+
+                // Stop Pengecekan
+                if (checkInterval) clearInterval(checkInterval);
+            } else if (status === 'expired' || status === 'failed') {
+                const badge = document.getElementById('statusText');
+                badge.className = 'status-badge';
+                badge.style.background = '#f8d7da';
+                badge.style.color = '#721c24';
+                badge.innerText = '🔴 TAGIHAN KEDALUWARSA';
+                document.getElementById('qrisDisplay').style.display = 'none';
+                document.getElementById('instructions').innerText = 'Waktu pembayaran telah habis. Silakan buat transaksi baru.';
+                if (checkInterval) clearInterval(checkInterval);
             }
         } catch(e) {}
     }
