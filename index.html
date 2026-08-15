@@ -7,11 +7,12 @@
     <style>
         body { font-family: sans-serif; display: flex; justify-content: center; padding: 20px; background: #f0f2f5; margin: 0; }
         .card { background: white; padding: 20px; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); width: 100%; max-width: 350px; text-align: center; }
-        img { width: 100%; max-width: 260px; border-radius: 10px; border: 1px solid #ddd; margin: 10px 0; }
+        img { width: 100%; max-width: 250px; border-radius: 10px; border: 1px solid #ddd; margin: 10px 0; }
         .price { font-size: 22px; font-weight: bold; color: #d63384; margin: 5px 0; }
         .status-badge { padding: 8px; border-radius: 6px; font-weight: bold; font-size: 14px; margin-bottom: 10px; background: #fff3cd; color: #856404; }
         .badge-paid { background: #d4edda !important; color: #155724 !important; }
         .info { font-size: 13px; color: #666; }
+        #loading { font-size: 14px; color: #007bff; font-weight: bold; }
     </style>
 </head>
 <body>
@@ -19,7 +20,9 @@
 <div class="card">
     <h3 style="margin-top:0;">💳 Tagihan QRIS</h3>
 
-    <div id="paymentContent">
+    <div id="loading">Memuat QRIS Pembayaran...</div>
+
+    <div id="paymentContent" style="display: none;">
         <div id="statusText" class="status-badge">🟡 Menunggu Pembayaran</div>
         <img id="qrisDisplay" src="" alt="QRIS Code">
         <div class="price" id="totalDisplay">Rp 0</div>
@@ -29,33 +32,61 @@
 
 <script>
     const urlParams = new URLSearchParams(window.location.search);
-    const imageParam = urlParams.get('image');
-    const totalParam = urlParams.get('total');
     const invParam = urlParams.get('inv');
+    const totalParam = urlParams.get('total');
     const apiKey = "SKY_be1b80ec1d164337";
 
-    if (imageParam && totalParam) {
-        document.getElementById('qrisDisplay').src = decodeURIComponent(imageParam);
-        document.getElementById('totalDisplay').innerText = "Rp " + Number(totalParam).toLocaleString('id-ID');
-        
-        if (invParam) {
-            setInterval(async () => {
-                try {
-                    const res = await fetch(`https://corsproxy.io/?${encodeURIComponent(`https://api.sairibot.my.id/api/invoice/status?apikey=${apiKey}&invoice_id=${invParam}`)}`);
-                    const data = await res.json();
-                    const status = (data.status || data.data?.status || "").toLowerCase();
+    async function initPage() {
+        if (!invParam) {
+            document.getElementById('loading').innerText = "⚠️ Link Pembayaran Tidak Valid";
+            return;
+        }
 
-                    if (status === 'paid' || status === 'success') {
-                        const badge = document.getElementById('statusText');
-                        badge.className = 'status-badge badge-paid';
-                        badge.innerText = '🟢 PEMBAYARAN LUNAS!';
-                        document.getElementById('instructions').innerText = 'Terima kasih, pembayaran telah diterima.';
-                        document.getElementById('qrisDisplay').style.display = 'none';
-                    }
-                } catch(e) {}
-            }, 5000);
+        document.getElementById('totalDisplay').innerText = "Rp " + Number(totalParam || 0).toLocaleString('id-ID');
+
+        // Ambil data QRIS langsung dari API SairiBot menggunakan ID Invoice
+        try {
+            const targetUrl = `https://api.sairibot.my.id/api/invoice/status?apikey=${apiKey}&invoice_id=${invParam}`;
+            const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
+            const res = await fetch(proxyUrl);
+            const data = await res.json();
+
+            // Pasang gambar QRIS jika tersedia dari API
+            if (data.qris_image || data.data?.qris_image) {
+                document.getElementById('qrisDisplay').src = data.qris_image || data.data.qris_image;
+            } else if (window.opener && window.opener.currentQrisBase64) {
+                document.getElementById('qrisDisplay').src = window.opener.currentQrisBase64;
+            }
+
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('paymentContent').style.display = 'block';
+
+            // Cek Status Pembayaran Real-Time setiap 4 detik
+            setInterval(checkStatus, 4000);
+        } catch(e) {
+            document.getElementById('loading').innerText = "Gagal memuat detail transaksi.";
         }
     }
+
+    async function checkStatus() {
+        try {
+            const targetUrl = `https://api.sairibot.my.id/api/invoice/status?apikey=${apiKey}&invoice_id=${invParam}`;
+            const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
+            const res = await fetch(proxyUrl);
+            const data = await res.json();
+            const status = (data.status || data.data?.status || "").toLowerCase();
+
+            if (status === 'paid' || status === 'success') {
+                const badge = document.getElementById('statusText');
+                badge.className = 'status-badge badge-paid';
+                badge.innerText = '🟢 PEMBAYARAN LUNAS!';
+                document.getElementById('instructions').innerText = 'Terima kasih, pembayaran telah diterima.';
+                document.getElementById('qrisDisplay').style.display = 'none';
+            }
+        } catch(e) {}
+    }
+
+    initPage();
 </script>
 </body>
 </html>
