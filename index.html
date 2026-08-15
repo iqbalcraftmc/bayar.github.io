@@ -4,17 +4,22 @@
     <meta charset="UTF-8">
     <meta name="google" content="notranslate">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tagihan QRIS</title>
+    <title>Status Pembayaran QRIS</title>
     <style>
-        body { font-family: 'Segoe UI', Roboto, sans-serif; display: flex; justify-content: center; padding: 20px; background: #f0f2f5; margin: 0; }
+        body { font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; display: flex; justify-content: center; padding: 20px; background: #f0f2f5; margin: 0; }
         .card { background: white; padding: 24px; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); width: 100%; max-width: 360px; text-align: center; }
         img { width: 100%; max-width: 250px; border-radius: 12px; border: 1px solid #ddd; margin: 12px 0; }
         .price { font-size: 24px; font-weight: bold; color: #d63384; margin: 8px 0; }
-        .status-badge { padding: 10px; border-radius: 8px; font-weight: bold; font-size: 14px; margin-bottom: 12px; background: #fff3cd; color: #856404; }
-        .badge-paid { background: #d4edda !important; color: #155724 !important; font-size: 16px !important; padding: 14px !important; }
-        .info { font-size: 13px; color: #666; line-height: 1.5; }
+        
+        /* Status Badges */
+        .status-badge { padding: 12px; border-radius: 8px; font-weight: bold; font-size: 15px; margin-bottom: 15px; }
+        .pending { background: #fff3cd; color: #856404; }
+        .success { background: #d4edda; color: #155724; }
+        .expired { background: #f8d7da; color: #721c24; }
+        
+        .info { font-size: 13px; color: #666; line-height: 1.5; margin-top: 10px; }
+        .status-icon { font-size: 50px; margin: 10px 0; display: none; }
         #loading { font-size: 14px; color: #007bff; font-weight: bold; }
-        .success-icon { font-size: 48px; margin: 10px 0; display: none; }
     </style>
 </head>
 <body>
@@ -22,11 +27,11 @@
 <div class="card">
     <h3 style="margin-top:0;">💳 Tagihan QRIS</h3>
 
-    <div id="loading">Memuat QRIS Pembayaran...</div>
+    <div id="loading">Memuat status transaksi...</div>
 
     <div id="paymentContent" style="display: none;">
-        <div id="statusText" class="status-badge">🟡 Menunggu Pembayaran</div>
-        <div id="successIcon" class="success-icon">✅</div>
+        <div id="statusBadge" class="status-badge pending">🟡 Menunggu Pembayaran</div>
+        <div id="statusIcon" class="status-icon"></div>
         
         <img id="qrisDisplay" src="" alt="QRIS Code">
         <div class="price" id="totalDisplay">Rp 0</div>
@@ -40,40 +45,16 @@
     const invParam = urlParams.get('inv');
     const totalParam = urlParams.get('total');
     const apiKey = "SKY_be1b80ec1d164337";
-
     let checkInterval = null;
 
-    async function initPage() {
+    async function init() {
         if (!invParam) {
-            document.getElementById('loading').innerText = "⚠️ Link Pembayaran Tidak Valid";
+            document.getElementById('loading').innerText = "⚠️ Link Tidak Valid";
             return;
         }
-
         document.getElementById('totalDisplay').innerText = "Rp " + Number(totalParam || 0).toLocaleString('id-ID');
-
-        try {
-            // Ambil QRIS langsung menggunakan Invoice ID
-            const targetUrl = `https://api.sairibot.my.id/api/invoice/status?apikey=${apiKey}&invoice_id=${invParam}`;
-            const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
-            const res = await fetch(proxyUrl);
-            const data = await res.json();
-
-            // Tampilkan gambar QRIS jika tersedia
-            const qrisImg = data.qris_image || data.data?.qris_image || data.image;
-            if (qrisImg) {
-                document.getElementById('qrisDisplay').src = qrisImg;
-            }
-
-            document.getElementById('loading').style.display = 'none';
-            document.getElementById('paymentContent').style.display = 'block';
-
-            // Cek status pertama kali
-            checkStatus();
-            // Cek status otomatis setiap 3 detik
-            checkInterval = setInterval(checkStatus, 3000);
-        } catch(e) {
-            document.getElementById('loading').innerText = "Gagal memuat transaksi.";
-        }
+        checkStatus();
+        checkInterval = setInterval(checkStatus, 3000);
     }
 
     async function checkStatus() {
@@ -83,39 +64,55 @@
             const res = await fetch(proxyUrl);
             const data = await res.json();
 
-            // Pengecekan multi-format respon dari SairiBot
+            // Ambil gambar QRIS jika belum ada
+            const qrisImg = data.qris_image || data.data?.qris_image || data.image;
+            if (qrisImg && !document.getElementById('qrisDisplay').src) {
+                document.getElementById('qrisDisplay').src = qrisImg;
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('paymentContent').style.display = 'block';
+            }
+
+            // Normalisasi status
             const rawStatus = data.status || data.data?.status || data.transaction_status || "";
             const status = String(rawStatus).toLowerCase();
 
-            if (status === 'paid' || status === 'success' || status === 'berhasil' || status === 'settlement') {
-                // 1. Ubah Badge Status
-                const badge = document.getElementById('statusText');
-                badge.className = 'status-badge badge-paid';
-                badge.innerText = '🟢 PEMBAYARAN BERHASIL!';
+            // LOGIKA STATUS
+            const badge = document.getElementById('statusBadge');
+            const icon = document.getElementById('statusIcon');
+            const inst = document.getElementById('instructions');
+            const qris = document.getElementById('qrisDisplay');
 
-                // 2. Sembunyikan Gambar QRIS
-                document.getElementById('qrisDisplay').style.display = 'none';
-
-                // 3. Tampilkan Ikon Sukses & Ubah Pesan
-                document.getElementById('successIcon').style.display = 'block';
-                document.getElementById('instructions').innerHTML = 'Terima kasih, pembayaran telah diterima dan diverifikasi oleh sistem.';
-
-                // Stop Pengecekan
-                if (checkInterval) clearInterval(checkInterval);
-            } else if (status === 'expired' || status === 'failed') {
-                const badge = document.getElementById('statusText');
-                badge.className = 'status-badge';
-                badge.style.background = '#f8d7da';
-                badge.style.color = '#721c24';
+            if (['paid', 'success', 'berhasil', 'settlement'].includes(status)) {
+                // STATUS BERHASIL
+                badge.className = 'status-badge success';
+                badge.innerText = '🟢 PEMBAYARAN BERHASIL';
+                icon.innerText = '✅';
+                icon.style.display = 'block';
+                qris.style.display = 'none';
+                inst.innerText = 'Pembayaran telah diterima dan diverifikasi.';
+                clearInterval(checkInterval);
+            } 
+            else if (['expired', 'kadaluwarsa', 'failed', 'cancel', 'batal'].includes(status)) {
+                // STATUS EXPIRED
+                badge.className = 'status-badge expired';
                 badge.innerText = '🔴 TAGIHAN KEDALUWARSA';
-                document.getElementById('qrisDisplay').style.display = 'none';
-                document.getElementById('instructions').innerText = 'Waktu pembayaran telah habis. Silakan buat transaksi baru.';
-                if (checkInterval) clearInterval(checkInterval);
+                icon.innerText = '❌';
+                icon.style.display = 'block';
+                qris.style.display = 'none';
+                inst.innerText = 'Waktu pembayaran habis. Silakan buat transaksi baru.';
+                clearInterval(checkInterval);
+            } 
+            else {
+                // STATUS MENUNGGU (PENDING)
+                badge.className = 'status-badge pending';
+                badge.innerText = '🟡 Menunggu Pembayaran';
             }
-        } catch(e) {}
+        } catch(e) {
+            console.log("Menunggu koneksi...");
+        }
     }
 
-    initPage();
+    init();
 </script>
 </body>
 </html>
