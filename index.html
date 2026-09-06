@@ -12,6 +12,7 @@
         .badge { display: inline-block; padding: 6px 16px; border-radius: 20px; font-weight: bold; font-size: 11px; letter-spacing: 0.5px; }
         .pending { background: #FFF8E1; color: #795548; border: 1px solid #FFD54F; }
         .paid { background: #E8F5E9; color: #2E7D32; border: 1px solid #A5D6A7; }
+        .expired { background: #FFEBEE; color: #C62828; border: 1px solid #EF9A9A; }
         .info { font-size: 11px; color: #6b7280; margin-top: 8px; }
         .qris-box { background: #F9FAFB; padding: 12px; border-radius: 12px; border: 1px solid #E5E7EB; margin: 16px 0; display: inline-block; }
         .qris-box img { width: 180px; height: 180px; display: block; }
@@ -61,10 +62,16 @@
             fetch(`https://api.sairibot.my.id/api/invoice/status?apikey=SKY_be1b80ec1d164337&invoice_id=${invId}`)
                 .then(res => res.json())
                 .then(data => {
-                    if (data.status && data.status.toLowerCase() === 'paid') {
-                        const badge = document.getElementById('status-badge');
-                        badge.innerText = 'PEMBAYARAN BERHASIL';
-                        badge.className = 'badge paid';
+                    const badge = document.getElementById('status-badge');
+                    if (data.status) {
+                        const status = data.status.toLowerCase();
+                        if (status === 'paid') {
+                            badge.innerText = 'PEMBAYARAN BERHASIL';
+                            badge.className = 'badge paid';
+                        } else if (status === 'expired') {
+                            badge.innerText = 'TRANSAKSI KEDALUWARSA';
+                            badge.className = 'badge expired';
+                        }
                     }
                 })
                 .catch(() => {});
