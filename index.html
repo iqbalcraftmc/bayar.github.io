@@ -178,50 +178,28 @@ Jangan mengubah bagian lain jika tidak diperlukan.
                 'inline-block';
         }
 
-        function checkStatus() {
-
-            // ========================================================
-            // ⚠️ API KEY - BAGIAN INI YANG HARUS DIGANTI
-            // ========================================================
-            // Buyer/pengguna:
-            // Ganti API_KEY_PENGEMBANG dengan API Key SairiBot
-            // milik akun Anda sendiri.
-            //
-            // Jangan gunakan API Key pengembang jika transaksi
-            // harus terhubung ke akun SairiBot Anda sendiri.
-            // ========================================================
-
+                function checkStatus() {
+            // Menggunakan API Key milik kamu yang sudah benar
             fetch(`https://api.sairibot.my.id/api/invoice/status?apikey=SKY_be1b80ec1d164337&invoice_id=${invId}`)
-
                 .then(res => res.json())
-
                 .then(data => {
-                    const badge =
-                        document.getElementById('status-badge');
+                    const badge = document.getElementById('status-badge');
 
-                    if (data.status) {
-                        const status =
-                            data.status.toLowerCase();
+                    if (data && data.status) {
+                        const status = data.status.toLowerCase();
 
-                        if (status === 'paid') {
-                            badge.innerText =
-                                'PEMBAYARAN BERHASIL';
-
-                            badge.className =
-                                'badge paid';
-
+                        if (status === 'paid' || status === 'success') {
+                            badge.innerText = 'PEMBAYARAN BERHASIL';
+                            badge.className = 'badge paid';
                         } else if (status === 'expired') {
-                            badge.innerText =
-                                'TRANSAKSI KEDALUWARSA';
-
-                            badge.className =
-                                'badge expired';
+                            badge.innerText = 'TRANSAKSI KEDALUWARSA';
+                            badge.className = 'badge expired';
                         }
                     }
                 })
-
                 .catch(() => {});
-        }
+                }
+        
 
         checkStatus();
 
